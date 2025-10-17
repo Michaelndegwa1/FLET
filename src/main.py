@@ -1,297 +1,172 @@
-import time
-
 import flet as ft
 
 
-def example(page):
-    import flet.canvas as cv
+class Task(ft.Column):
+    def __init__(self, task_name, task_status_change, task_delete):
+        super().__init__()
+        self.completed = False
+        self.task_name = task_name
+        self.task_status_change = task_status_change
+        self.task_delete = task_delete
+        self.display_task = ft.Checkbox(
+            value=False, label=self.task_name, on_change=self.status_changed
+        )
+        self.edit_name = ft.TextField(expand=1)
 
-    url = "https://github.com/mdn/webaudio-examples/blob/main/audio-analyser/viper.mp3?raw=true"
-
-    def convertMillis(millis):
-        seconds = int(millis / 1000) % 60
-        if seconds < 10:
-            seconds_str = f"0{seconds}"
-        else:
-            seconds_str = f"{seconds}"
-        minutes = int(millis / (1000 * 60)) % 60
-        return f"{minutes}:{seconds_str}"
-
-    class VolumeSlider(ft.GestureDetector):
-        def __init__(self, audio, on_change_volume):
-            super().__init__()
-            self.visible = False
-            self.audio = audio
-            self.previous_volume = 1
-            self.content = ft.Container(
-                width=100,
-                height=5,
-                content=cv.Canvas(
-                    shapes=[
-                        cv.Rect(
-                            x=0,
-                            y=0,
-                            height=4,
-                            border_radius=3,
-                            paint=ft.Paint(color=ft.colors.GREY_500),
-                            width=100,
-                        ),
-                        cv.Rect(
-                            x=0,
-                            y=0,
-                            height=4,
-                            border_radius=3,
-                            paint=ft.Paint(color=ft.colors.GREY_900),
-                            width=100,
-                        ),
-                        cv.Circle(
-                            x=100,
-                            y=2,
-                            radius=6,
-                            paint=ft.Paint(color=ft.colors.GREY_900),
-                        ),
-                    ]
-                ),
-            )
-            self.on_hover = self.change_cursor
-            self.on_pan_start = self.change_volume
-            self.on_pan_update = self.change_volume
-            self.on_change_volume = on_change_volume
-
-        def change_audio_volume(self, volume):
-            self.audio.volume = volume
-
-        def change_cursor(self, e: ft.HoverEvent):
-            e.control.mouse_cursor = ft.MouseCursor.CLICK
-            e.control.update()
-
-        def change_volume(self, e):
-            if e.local_x >= 0 and e.local_x <= self.content.width:
-                self.change_audio_volume((e.local_x) / self.content.width)
-                self.content.content.shapes[1].width = e.local_x  ## New volume
-                self.content.content.shapes[2].x = e.local_x  ## Thumb
-                self.on_change_volume()
-                self.page.update()
-
-        def mute(self):
-            self.previous_volume = self.audio.volume
-            self.content.content.shapes[1].width = 0
-            self.content.content.shapes[2].x = 0
-            self.audio.volume = 0
-
-        def unmute(self):
-            self.audio.volume = self.previous_volume
-            self.content.content.shapes[1].width = (
-                self.content.width * self.audio.volume
-            )
-            self.content.content.shapes[2].x = self.content.width * self.audio.volume
-            print("Unmute")
-
-    class Track(ft.GestureDetector):
-        def __init__(self, audio, on_change_position):
-            super().__init__()
-            self.visible = False
-            self.content = ft.Container(
-                content=cv.Canvas(
-                    on_resize=self.canvas_resized,
-                    shapes=[
-                        cv.Rect(
-                            x=0,
-                            y=0,
-                            height=5,
-                            border_radius=3,
-                            paint=ft.Paint(color=ft.colors.GREY_500),
-                            width=100,
-                        ),
-                        cv.Rect(
-                            x=0,
-                            y=0,
-                            height=5,
-                            border_radius=3,
-                            paint=ft.Paint(color=ft.colors.GREY_900),
-                            width=0,
-                        ),
-                    ],
-                ),
-                height=10,
-                width=float("inf"),
-            )
-            self.audio = audio
-            self.audio_duration = 0
-            self.on_pan_start = self.find_position
-            self.on_pan_update = self.find_position
-            self.on_hover = self.change_cursor
-            self.on_change_position = on_change_position
-
-        def canvas_resized(self, e: cv.CanvasResizeEvent):
-            print("On resize:", e.width, e.height)
-            self.track_width = e.width
-            e.control.shapes[0].width = e.width
-            e.control.update()
-
-        def find_position(self, e):
-            position = int(self.audio_duration * e.local_x / self.track_width)
-            self.content.content.shapes[1].width = max(
-                0, min(e.local_x, self.track_width)
-            )
-            self.update()
-            self.on_change_position(position)
-
-        def change_cursor(self, e: ft.HoverEvent):
-            e.control.mouse_cursor = ft.MouseCursor.CLICK
-            e.control.update()
-
-    class AudioPlayer(ft.Column):
-        def __init__(self, url):
-            super().__init__(tight=True)
-            self.audio1 = ft.Audio(
-                src=url,
-                autoplay=False,
-                volume=1,
-                balance=0,
-                on_loaded=self.audio_loaded,
-                on_duration_changed=lambda e: print("Duration changed:", e.data),
-                on_position_changed=self.change_position,
-                on_state_changed=self.state_changed,
-                on_seek_complete=lambda _: print("Seek complete"),
-            )
-            self.position = 0
-            self.track_canvas = Track(
-                audio=self.audio1, on_change_position=self.seek_position
-            )
-            self.play_button = ft.IconButton(
-                icon=ft.icons.PLAY_ARROW,
-                visible=False,
-                on_click=self.play,
-            )
-            self.pause_button = ft.IconButton(
-                icon=ft.icons.PAUSE,
-                visible=False,
-                on_click=self.pause,
-            )
-            self.position_duration = ft.Text()
-
-            self.volume_slider = VolumeSlider(
-                audio=self.audio1, on_change_volume=self.check_mute
-            )
-            self.volume_icon = ft.IconButton(
-                icon=ft.icons.VOLUME_UP,
-                visible=False,
-                on_click=self.volume_icon_clicked,
-            )
-            self.controls = [
-                self.track_canvas,
+        self.display_view = ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                self.display_task,
                 ft.Row(
-                    alignment=ft.MainAxisAlignment.SPACE_AROUND,
+                    spacing=0,
                     controls=[
-                        self.play_button,
-                        self.pause_button,
-                        self.position_duration,
-                        ft.Row(
-                            [
-                                self.volume_icon,
-                                self.volume_slider,
-                            ]
+                        ft.IconButton(
+                            icon=ft.Icons.CREATE_OUTLINED,
+                            tooltip="Edit To-Do",
+                            on_click=self.edit_clicked,
+                        ),
+                        ft.IconButton(
+                            ft.Icons.DELETE_OUTLINE,
+                            tooltip="Delete To-Do",
+                            on_click=self.delete_clicked,
                         ),
                     ],
                 ),
-            ]
+            ],
+        )
 
-        # happens when example is added to the page (when user chooses the Audio control from the grid)
-        def did_mount(self):
-            self.page.overlay.append(self.audio1)
-            # self.track_canvas.audio_duration = self.audio1.get_duration()
-            self.page.update()
+        self.edit_view = ft.Row(
+            visible=False,
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                self.edit_name,
+                ft.IconButton(
+                    icon=ft.Icons.DONE_OUTLINE_OUTLINED,
+                    icon_color=ft.Colors.GREEN,
+                    tooltip="Update To-Do",
+                    on_click=self.save_clicked,
+                ),
+            ],
+        )
+        self.controls = [self.display_view, self.edit_view]
 
-        # happens when example is removed from the page (when user chooses different control group on the navigation rail)
-        def will_unmount(self):
-            self.page.overlay.remove(self.audio1)
-            self.page.update()
+    def edit_clicked(self, e):
+        self.edit_name.value = self.display_task.label
+        self.display_view.visible = False
+        self.edit_view.visible = True
+        self.update()
 
-        def audio_loaded(self, e):
-            time.sleep(0.1)
-            self.track_canvas.visible = True
-            self.position_duration.value = (
-                f"{convertMillis(0)} / {convertMillis(self.audio1.get_duration())}"
+    def save_clicked(self, e):
+        self.display_task.label = self.edit_name.value
+        self.display_view.visible = True
+        self.edit_view.visible = False
+        self.update()
+
+    def status_changed(self, e):
+        self.completed = self.display_task.value
+        self.task_status_change(self)
+
+    def delete_clicked(self, e):
+        self.task_delete(self)
+
+
+class TodoApp(ft.Column):
+    # application's root control is a Column containing all other controls
+    def __init__(self):
+        super().__init__()
+        self.new_task = ft.TextField(
+            hint_text="What needs to be done?", on_submit=self.add_clicked, expand=True
+        )
+        self.tasks = ft.Column()
+
+        self.filter = ft.Tabs(
+            scrollable=False,
+            selected_index=0,
+            on_change=self.tabs_changed,
+            tabs=[ft.Tab(text="all"), ft.Tab(text="active"), ft.Tab(text="completed")],
+        )
+
+        self.items_left = ft.Text("0 items left")
+
+        self.width = 600
+        self.controls = [
+            ft.Row(
+                [ft.Text(value="Todos", theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM)],
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            ft.Row(
+                controls=[
+                    self.new_task,
+                    ft.FloatingActionButton(
+                        icon=ft.Icons.ADD, on_click=self.add_clicked
+                    ),
+                ],
+            ),
+            ft.Column(
+                spacing=25,
+                controls=[
+                    self.filter,
+                    self.tasks,
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            self.items_left,
+                            ft.OutlinedButton(
+                                text="Clear completed", on_click=self.clear_clicked
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        ]
+
+    def add_clicked(self, e):
+        if self.new_task.value:
+            task = Task(self.new_task.value, self.task_status_change, self.task_delete)
+            self.tasks.controls.append(task)
+            self.new_task.value = ""
+            self.new_task.focus()
+            self.update()
+
+    def task_status_change(self, task):
+        self.update()
+
+    def task_delete(self, task):
+        self.tasks.controls.remove(task)
+        self.update()
+
+    def tabs_changed(self, e):
+        self.update()
+
+    def clear_clicked(self, e):
+        for task in self.tasks.controls[:]:
+            if task.completed:
+                self.task_delete(task)
+
+    def before_update(self):
+        status = self.filter.tabs[self.filter.selected_index].text
+        count = 0
+        for task in self.tasks.controls:
+            task.visible = (
+                status == "all"
+                or (status == "active" and task.completed == False)
+                or (status == "completed" and task.completed)
             )
-            self.play_button.visible = True
-            self.volume_slider.visible = True
-            self.volume_icon.visible = True
-            self.track_canvas.audio_duration = self.audio1.get_duration()
-            self.page.update()
-
-        def play(self, e):
-            if self.position != 0:
-                self.audio1.resume()
-
-            else:
-                self.audio1.play()
-            self.play_button.visible = False
-            self.pause_button.visible = True
-            self.page.update()
-
-        def pause(self, e):
-            self.audio1.pause()
-            self.play_button.visible = True
-            self.pause_button.visible = False
-            self.page.update()
-
-        def state_changed(self, e):
-            if e.data == "completed":
-                self.play_button.visible = True
-                self.pause_button.visible = False
-
-        def seek_position(self, position):
-            self.audio1.seek(position)
-            self.page.update()
-
-        def change_position(self, e):
-            self.position = e.data
-            self.position_duration.value = f"{convertMillis(int(e.data))} / {convertMillis(self.track_canvas.audio_duration)}"
-            self.track_canvas.content.content.shapes[1].width = (
-                int(e.data)
-                / self.track_canvas.audio_duration
-                * self.track_canvas.track_width
-            )
-            e.control.page.update()
-
-        def volume_icon_clicked(self, e):
-            if e.control.icon == ft.icons.VOLUME_UP:
-                e.control.icon = ft.icons.VOLUME_OFF
-                self.volume_slider.mute()
-            else:
-                e.control.icon = ft.icons.VOLUME_UP
-                self.volume_slider.unmute()
-            e.control.page.update()
-
-        def check_mute(self):
-            if (
-                int(self.audio1.volume * 100) == 0
-                and self.volume_icon.icon == ft.icons.VOLUME_UP
-            ):
-                self.volume_icon.icon = ft.icons.VOLUME_OFF
-                self.volume_slider.mute()
-                self.volume_icon.update()
-            elif (
-                int(self.audio1.volume * 100) != 0
-                and self.volume_icon.icon == ft.icons.VOLUME_OFF
-            ):
-                self.volume_icon.icon = ft.icons.VOLUME_UP
-                self.volume_slider.unmute()
-                self.volume_icon.update()
-
-    player = AudioPlayer(url=url)
-
-    return ft.Container(player, alignment=ft.alignment.center, expand=True)
+            if not task.completed:
+                count += 1
+        self.items_left.value = f"{count} active item(s) left"
 
 
 def main(page: ft.Page):
-    page.title = "Flet audio player example"
-    page.window_width = 390
-    page.window_height = 844
+    page.title = "ToDo App"
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+    page.scroll = ft.ScrollMode.ADAPTIVE
 
-    page.add(example(page))
+    # create app control and add it to the page
+    page.add(TodoApp())
 
 
-if __name__ == "__main__":
-    ft.app(target=main)
+ft.app(main)
